@@ -270,8 +270,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         switch ($_POST['action']) {
             case 'register':
                 if (registerUser($_POST['username'], $_POST['email'], $_POST['password'])) {
-                    header("Location: index.php?message=Registration successful. Please login.");
-                    exit;
+                    $success = "Registration successful. Please login.";
                 } else {
                     $error = "Username already exists";
                 }
@@ -279,8 +278,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
             case 'login':
                 if (loginUser($_POST['username'], $_POST['password'])) {
-                    header("Location: dashboard.php");
-                    exit;
+                    // Stay on the same page (index.php) instead of redirecting to dashboard.php
+                    $success = "Login successful!";
                 } else {
                     $error = "Invalid username or password";
                 }
@@ -288,23 +287,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
             case 'add_website':
                 if (addWebsite($_POST['url'], $_POST['name'], $_POST['check_interval'], $_POST['proxy'])) {
-                    header("Location: dashboard.php?message=Website added successfully");
-                    exit;
+                    $success = "Website added successfully";
                 }
                 break;
                 
             case 'update_telegram':
                 if (updateTelegramSettings($_POST['bot_token'], $_POST['chat_id'])) {
-                    header("Location: dashboard.php?message=Telegram settings updated");
-                    exit;
+                    $success = "Telegram settings updated";
                 }
                 break;
                 
             case 'check_website':
                 if (isset($_POST['website_id'])) {
                     checkWebsiteStatus($_POST['website_id']);
-                    header("Location: dashboard.php");
-                    exit;
+                    $success = "Website status checked";
                 }
                 break;
         }
@@ -462,7 +458,7 @@ $currentUser = getCurrentUser();
                             <span class="nav-link">Welcome, <?php echo htmlspecialchars($_SESSION['username']); ?></span>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="dashboard.php">Dashboard</a>
+                            <a class="nav-link" href="index.php">Dashboard</a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="?action=logout">Logout</a>
@@ -481,9 +477,9 @@ $currentUser = getCurrentUser();
     </nav>
 
     <div class="container py-4">
-        <?php if (isset($_GET['message'])): ?>
-            <div class="alert alert-info alert-dismissible fade show" role="alert">
-                <?php echo htmlspecialchars($_GET['message']); ?>
+        <?php if (isset($success)): ?>
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <?php echo htmlspecialchars($success); ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
         <?php endif; ?>
