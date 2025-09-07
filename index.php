@@ -1,41 +1,29 @@
 <?php
-// Define file paths for data storage
-define('USERS_FILE', 'users.json');
-define('WEBSITES_FILE', 'websites.json');
-define('STATUS_LOGS_FILE', 'status_logs.json');
-
-// Initialize data files if they don't exist
-function initDataFiles() {
-    if (!file_exists(USERS_FILE)) {
-        file_put_contents(USERS_FILE, json_encode([]));
-    }
-    if (!file_exists(WEBSITES_FILE)) {
-        file_put_contents(WEBSITES_FILE, json_encode([]));
-    }
-    if (!file_exists(STATUS_LOGS_FILE)) {
-        file_put_contents(STATUS_LOGS_FILE, json_encode([]));
-    }
-}
-
-// Initialize data files
-initDataFiles();
-
-// Session management
+// Start session for data storage
 session_start();
+
+// Initialize session data if not exists
+if (!isset($_SESSION['users'])) {
+    $_SESSION['users'] = [];
+}
+if (!isset($_SESSION['websites'])) {
+    $_SESSION['websites'] = [];
+}
+if (!isset($_SESSION['status_logs'])) {
+    $_SESSION['status_logs'] = [];
+}
 
 // Authentication functions
 function registerUser($username, $email, $password) {
-    $users = json_decode(file_get_contents(USERS_FILE), true);
-    
     // Check if username already exists
-    foreach ($users as $user) {
+    foreach ($_SESSION['users'] as $user) {
         if ($user['username'] === $username) {
             return false;
         }
     }
     
     // Add new user
-    $users[] = [
+    $_SESSION['users'][] = [
         'id' => uniqid(),
         'username' => $username,
         'email' => $email,
@@ -45,13 +33,11 @@ function registerUser($username, $email, $password) {
         'created_at' => date('Y-m-d H:i:s')
     ];
     
-    return file_put_contents(USERS_FILE, json_encode($users));
+    return true;
 }
 
 function loginUser($username, $password) {
-    $users = json_decode(file_get_contents(USERS_FILE), true);
-    
-    foreach ($users as $user) {
+    foreach ($_SESSION['users'] as $user) {
         if ($user['username'] === $username && password_verify($password, $user['password'])) {
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['username'] = $user['username'];
@@ -69,9 +55,7 @@ function isLoggedIn() {
 function getCurrentUser() {
     if (!isLoggedIn()) return null;
     
-    $users = json_decode(file_get_contents(USERS_FILE), true);
-    
-    foreach ($users as $user) {
+    foreach ($_SESSION['users'] as $user) {
         if ($user['id'] === $_SESSION['user_id']) {
             return $user;
         }
@@ -90,9 +74,7 @@ function logoutUser() {
 function addWebsite($url, $name, $interval = 5, $proxy = null) {
     if (!isLoggedIn()) return false;
     
-    $websites = json_decode(file_get_contents(WEBSITES_FILE), true);
-    
-    $websites[] = [
+    $_SESSION['websites'][] = [
         'id' => uniqid(),
         'user_id' => $_SESSION['user_id'],
         'url' => $url,
@@ -103,16 +85,14 @@ function addWebsite($url, $name, $interval = 5, $proxy = null) {
         'created_at' => date('Y-m-d H:i:s')
     ];
     
-    return file_put_contents(WEBSITES_FILE, json_encode($websites));
+    return true;
 }
 
 function getWebsites() {
     if (!isLoggedIn()) return [];
     
-    $websites = json_decode(file_get_contents(WEBSITES_FILE), true);
     $userWebsites = [];
-    
-    foreach ($websites as $website) {
+    foreach ($_SESSION['websites'] as $website) {
         if ($website['user_id'] === $_SESSION['user_id']) {
             $userWebsites[] = $website;
         }
@@ -122,10 +102,9 @@ function getWebsites() {
 }
 
 function checkWebsiteStatus($websiteId) {
-    $websites = json_decode(file_get_contents(WEBSITES_FILE), true);
     $website = null;
     
-    foreach ($websites as $w) {
+    foreach ($_SESSION['websites'] as $w) {
         if ($w['id'] === $websiteId) {
             $website = $w;
             break;
@@ -155,8 +134,14 @@ function checkWebsiteStatus($websiteId) {
     $context = stream_context_create($options);
     
     try {
-        $response = file_get_contents($website['url'], false, $context);
-        $statusCode = isset($http_response_header[0]) ? extractStatusCode($http_response_header[0]) : 0;
+        $response = @file_get_contents($website['url'], false, $context);
+        $statusCode = 0;
+        
+        if (isset($http_response_header[0])) {
+            preg_match('/HTTP\/\d\.\d\s(\d{3})/', $http_response_header[0], $matches);
+            $statusCode = isset($matches[1]) ? (int)$matches[1] : 0;
+        }
+        
         $isOnline = $statusCode >= 200 && $statusCode < 400;
     } catch (Exception $e) {
         $statusCode = 0;
@@ -166,8 +151,7 @@ function checkWebsiteStatus($websiteId) {
     $responseTime = round(microtime(true) - $startTime, 2);
     
     // Log the status
-    $logs = json_decode(file_get_contents(STATUS_LOGS_FILE), true);
-    $logs[] = [
+    $_SESSION['status_logs'][] = [
         'id' => uniqid(),
         'website_id' => $websiteId,
         'status_code' => $statusCode,
@@ -175,7 +159,6 @@ function checkWebsiteStatus($websiteId) {
         'is_online' => $isOnline,
         'checked_at' => date('Y-m-d H:i:s')
     ];
-    file_put_contents(STATUS_LOGS_FILE, json_encode($logs));
     
     // Send Telegram notification if website is down
     if (!$isOnline) {
@@ -189,16 +172,10 @@ function checkWebsiteStatus($websiteId) {
     ];
 }
 
-function extractStatusCode($header) {
-    preg_match('/HTTP\/\d\.\d\s(\d{3})/', $header, $matches);
-    return isset($matches[1]) ? (int)$matches[1] : 0;
-}
-
 function sendTelegramNotification($website) {
-    $users = json_decode(file_get_contents(USERS_FILE), true);
     $user = null;
     
-    foreach ($users as $u) {
+    foreach ($_SESSION['users'] as $u) {
         if ($u['id'] === $website['user_id']) {
             $user = $u;
             break;
@@ -236,13 +213,12 @@ function sendTelegramNotification($website) {
 }
 
 function getWebsiteStats($websiteId) {
-    $logs = json_decode(file_get_contents(STATUS_LOGS_FILE), true);
     $websiteLogs = [];
     
     // Get logs for this website from the last 24 hours
     $oneDayAgo = strtotime('-1 day');
     
-    foreach ($logs as $log) {
+    foreach ($_SESSION['status_logs'] as $log) {
         if ($log['website_id'] === $websiteId && strtotime($log['checked_at']) >= $oneDayAgo) {
             $websiteLogs[] = $log;
         }
@@ -277,9 +253,7 @@ function getWebsiteStats($websiteId) {
 function updateTelegramSettings($botToken, $chatId) {
     if (!isLoggedIn()) return false;
     
-    $users = json_decode(file_get_contents(USERS_FILE), true);
-    
-    foreach ($users as &$user) {
+    foreach ($_SESSION['users'] as &$user) {
         if ($user['id'] === $_SESSION['user_id']) {
             $user['telegram_bot_token'] = $botToken;
             $user['telegram_chat_id'] = $chatId;
@@ -287,7 +261,7 @@ function updateTelegramSettings($botToken, $chatId) {
         }
     }
     
-    return file_put_contents(USERS_FILE, json_encode($users));
+    return true;
 }
 
 // Handle form submissions
